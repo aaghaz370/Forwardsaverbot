@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 from aiohttp import web
 
 # Logging setup
@@ -19,43 +19,90 @@ async def health_check(request):
 async def home(request):
     return web.Response(text="Telegram Forward Saver Bot is LIVE 🚀", status=200)
 
+# Start command handler
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start command handler"""
+    welcome_text = """
+🤖 **Forward Saver Bot** 
+
+Mujhe kisi bhi group/channel mein **admin** banao!
+
+✅ **Main kya karunga:**
+- Har forwarded message ko automatically save karunga
+- Tumhare personal chat mein bhej dunga
+- Original delete ho jaye to bhi tumhare paas rahega!
+
+📌 **Supported:**
+- Photos 📷
+- Videos 🎥
+- Documents 📄
+- Audio 🎵
+- Voice messages 🎤
+- Text messages 📝
+- Stickers 😊
+
+**Ab mujhe admin banao aur enjoy karo!** 🚀
+"""
+    await update.message.reply_text(welcome_text)
+
 # Bot handlers
 async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Forwarded messages ko handle karta hai aur unhe bot ke saved messages mein store karta hai"""
+    """Forwarded messages ko handle karta hai"""
     
-    message = update.message
+    # Channel post ya message dono handle karo
+    message = update.channel_post or update.message
+    
+    if not message:
+        return
     
     # Check if message is forwarded
     if not message.forward_origin:
         return
     
     try:
+        # Bot owner ka user ID - pehle message se automatically detect hoga
+        # Ya tum manually set kar sakte ho
+        target_user_id = update.effective_user.id if update.effective_user else None
+        
+        # Agar channel post hai to owner ko directly bhejenge
+        if update.channel_post:
+            # Channel posts ke liye owner ID manually set karo
+            # Ya first group message se detect karo
+            if not hasattr(context.bot_data, 'owner_id'):
+                logger.warning("⚠️ Owner ID not set. Skipping channel post.")
+                return
+            target_user_id = context.bot_data.get('owner_id')
+        
+        if not target_user_id:
+            # Agar user ID nahi mili to skip karo
+            return
+        
         # Message details
-        chat_name = update.effective_chat.title or "Private Chat"
-        user_name = update.effective_user.first_name
+        chat_name = message.chat.title or "Private Chat"
+        user_name = message.sender_chat.title if message.sender_chat else "Unknown"
         
         # Caption banao with original source info
-        caption_text = f"📩 Forwarded from: {chat_name}\n"
-        caption_text += f"👤 Saved by: {user_name}\n"
-        caption_text += f"🔗 Chat ID: {update.effective_chat.id}\n"
+        caption_text = f"📩 From: {chat_name}\n"
+        caption_text += f"👤 By: {user_name}\n"
+        caption_text += f"🔗 Chat ID: {message.chat.id}\n"
+        caption_text += f"📅 {message.date.strftime('%d %b %Y, %H:%M')}\n"
         
         if message.caption:
-            caption_text += f"\n📝 Original Caption:\n{message.caption}"
+            caption_text += f"\n📝 Caption:\n{message.caption[:800]}"  # Limit caption
         
         # Different types of media ko handle karo
         if message.photo:
-            # Highest quality photo lelo
             photo = message.photo[-1]
             await context.bot.send_photo(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 photo=photo.file_id,
-                caption=caption_text[:1024]  # Telegram limit
+                caption=caption_text[:1024]
             )
             logger.info(f"✅ Photo saved from {chat_name}")
             
         elif message.video:
             await context.bot.send_video(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 video=message.video.file_id,
                 caption=caption_text[:1024]
             )
@@ -63,7 +110,7 @@ async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT
             
         elif message.document:
             await context.bot.send_document(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 document=message.document.file_id,
                 caption=caption_text[:1024]
             )
@@ -71,7 +118,7 @@ async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT
             
         elif message.audio:
             await context.bot.send_audio(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 audio=message.audio.file_id,
                 caption=caption_text[:1024]
             )
@@ -79,50 +126,59 @@ async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT
             
         elif message.voice:
             await context.bot.send_voice(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 voice=message.voice.file_id,
                 caption=caption_text[:1024]
             )
-            logger.info(f"✅ Voice message saved from {chat_name}")
+            logger.info(f"✅ Voice saved from {chat_name}")
             
         elif message.video_note:
             await context.bot.send_video_note(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 video_note=message.video_note.file_id
             )
-            # Video notes don't support captions, so send text separately
             await context.bot.send_message(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 text=caption_text
             )
             logger.info(f"✅ Video note saved from {chat_name}")
             
         elif message.sticker:
             await context.bot.send_sticker(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 sticker=message.sticker.file_id
             )
             await context.bot.send_message(
-                chat_id=update.effective_user.id,
+                chat_id=target_user_id,
                 text=caption_text
             )
             logger.info(f"✅ Sticker saved from {chat_name}")
             
         elif message.text:
-            # Text messages ko bhi save karo
             text_content = f"{caption_text}\n\n💬 Message:\n{message.text}"
             await context.bot.send_message(
-                chat_id=update.effective_user.id,
-                text=text_content[:4096]  # Telegram text limit
+                chat_id=target_user_id,
+                text=text_content[:4096]
             )
-            logger.info(f"✅ Text message saved from {chat_name}")
+            logger.info(f"✅ Text saved from {chat_name}")
             
     except Exception as e:
-        logger.error(f"❌ Error handling forwarded message: {e}")
+        logger.error(f"❌ Error: {e}")
+
+async def set_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner ID set karne ke liye - bot ko private chat mein /setowner bhejo"""
+    if update.effective_user:
+        context.bot_data['owner_id'] = update.effective_user.id
+        await update.message.reply_text(
+            f"✅ Owner set: {update.effective_user.first_name}\n"
+            f"ID: {update.effective_user.id}\n\n"
+            f"Ab main tumhe sab forwarded messages bhejunga! 🚀"
+        )
+        logger.info(f"✅ Owner set: {update.effective_user.id}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log errors"""
-    logger.error(f"Update {update} caused error {context.error}")
+    logger.error(f"Error: {context.error}")
 
 async def start_web_server():
     """Web server for health checks"""
@@ -142,17 +198,20 @@ async def start_web_server():
 async def main():
     """Bot ko start karo"""
     
-    # Bot token environment variable se lo
     TOKEN = os.environ.get('BOT_TOKEN')
     
     if not TOKEN:
-        logger.error("❌ BOT_TOKEN environment variable not set!")
+        logger.error("❌ BOT_TOKEN not set!")
         return
     
     # Application banao
     application = Application.builder().token(TOKEN).build()
     
-    # Handler add karo - sirf forwarded messages ke liye
+    # Commands
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("setowner", set_owner))
+    
+    # Forwarded messages handler - dono message aur channel_post ke liye
     application.add_handler(
         MessageHandler(
             filters.FORWARDED & ~filters.COMMAND,
@@ -163,23 +222,27 @@ async def main():
     # Error handler
     application.add_error_handler(error_handler)
     
-    # Web server start karo
+    # Web server
     await start_web_server()
     
-    logger.info("🚀 Bot started successfully!")
-    logger.info("📡 Polling mode - waiting for updates...")
+    logger.info("🚀 Bot started!")
+    logger.info("📡 Polling mode active...")
+    logger.info("⚠️ First send /setowner to bot in private chat!")
     
-    # Bot ko polling mode mein chalao
+    # Start bot
     async with application:
         await application.initialize()
         await application.start()
-        await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        await application.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True
+        )
         
-        # Keep the bot running
+        # Keep running
         try:
             await asyncio.Event().wait()
         except (KeyboardInterrupt, SystemExit):
-            logger.info("🛑 Bot stopping...")
+            logger.info("🛑 Stopping...")
         finally:
             await application.updater.stop()
             await application.stop()

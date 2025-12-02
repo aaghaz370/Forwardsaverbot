@@ -22,7 +22,7 @@ REMOVE_TEXT = [
     "✨Buy Premium",
     "Click here to Buy",
     "🎖All Branches",
-    "⚡️Study Ratna⚡️",
+    "Study Ratna",
     "〰️〰️〰️〰️〰️〰️〰️〰️",
 ]
 

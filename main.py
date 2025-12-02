@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 # Caption mein se remove karne ke liye text (list mein daalo)
 REMOVE_TEXT = [
-    "✨Buy Premium",
+    "✨Buy Premium -",
     "Click here to Buy",
-    "🎖All Branches",
-    "Study Ratna",
+    "🎖All Branches -",
+    "⚡️Study Ratna⚡️",
     "〰️〰️〰️〰️〰️〰️〰️〰️",
 ]
 

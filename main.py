@@ -28,13 +28,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Mujhe kisi bhi group/channel mein **admin** banao!
 
 ✅ **Main kya karunga:**
-- Har forwarded message ko automatically save karunga
-- Tumhare personal chat mein bhej dunga
-- Original delete ho jaye to bhi tumhare paas rahega!
+- Har forwarded message ko us group/channel mein hi save kar dunga
+- Original delete ho jaye to mera message rahega
+- Permanent backup ban jayega!
 
 📌 **Supported:**
 - Photos 📷
-- Videos 🎥
+- Videos 🎥  
 - Documents 📄
 - Audio 🎵
 - Voice messages 🎤
@@ -47,7 +47,7 @@ Mujhe kisi bhi group/channel mein **admin** banao!
 
 # Bot handlers
 async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Forwarded messages ko handle karta hai"""
+    """Forwarded messages ko same chat mein save karta hai"""
     
     # Channel post ya message dono handle karo
     message = update.channel_post or update.message
@@ -60,121 +60,92 @@ async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT
         return
     
     try:
-        # Bot owner ka user ID - pehle message se automatically detect hoga
-        # Ya tum manually set kar sakte ho
-        target_user_id = update.effective_user.id if update.effective_user else None
+        chat_id = message.chat.id
         
-        # Agar channel post hai to owner ko directly bhejenge
-        if update.channel_post:
-            # Channel posts ke liye owner ID manually set karo
-            # Ya first group message se detect karo
-            if not hasattr(context.bot_data, 'owner_id'):
-                logger.warning("⚠️ Owner ID not set. Skipping channel post.")
-                return
-            target_user_id = context.bot_data.get('owner_id')
+        # Caption banao - simple backup label
+        backup_label = "💾 BACKUP SAVED\n"
+        backup_label += f"📅 {message.date.strftime('%d %b %Y, %H:%M')}\n"
         
-        if not target_user_id:
-            # Agar user ID nahi mili to skip karo
-            return
-        
-        # Message details
-        chat_name = message.chat.title or "Private Chat"
-        user_name = message.sender_chat.title if message.sender_chat else "Unknown"
-        
-        # Caption banao with original source info
-        caption_text = f"📩 From: {chat_name}\n"
-        caption_text += f"👤 By: {user_name}\n"
-        caption_text += f"🔗 Chat ID: {message.chat.id}\n"
-        caption_text += f"📅 {message.date.strftime('%d %b %Y, %H:%M')}\n"
-        
+        original_caption = ""
         if message.caption:
-            caption_text += f"\n📝 Caption:\n{message.caption[:800]}"  # Limit caption
+            original_caption = f"\n{message.caption}"
         
-        # Different types of media ko handle karo
+        final_caption = backup_label + original_caption
+        
+        # Different types of media ko same chat mein re-upload karo
         if message.photo:
             photo = message.photo[-1]
             await context.bot.send_photo(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 photo=photo.file_id,
-                caption=caption_text[:1024]
+                caption=final_caption[:1024]
             )
-            logger.info(f"✅ Photo saved from {chat_name}")
+            logger.info(f"✅ Photo backup created in chat {chat_id}")
             
         elif message.video:
             await context.bot.send_video(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 video=message.video.file_id,
-                caption=caption_text[:1024]
+                caption=final_caption[:1024]
             )
-            logger.info(f"✅ Video saved from {chat_name}")
+            logger.info(f"✅ Video backup created in chat {chat_id}")
             
         elif message.document:
             await context.bot.send_document(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 document=message.document.file_id,
-                caption=caption_text[:1024]
+                caption=final_caption[:1024]
             )
-            logger.info(f"✅ Document saved from {chat_name}")
+            logger.info(f"✅ Document backup created in chat {chat_id}")
             
         elif message.audio:
             await context.bot.send_audio(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 audio=message.audio.file_id,
-                caption=caption_text[:1024]
+                caption=final_caption[:1024]
             )
-            logger.info(f"✅ Audio saved from {chat_name}")
+            logger.info(f"✅ Audio backup created in chat {chat_id}")
             
         elif message.voice:
             await context.bot.send_voice(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 voice=message.voice.file_id,
-                caption=caption_text[:1024]
+                caption=final_caption[:1024]
             )
-            logger.info(f"✅ Voice saved from {chat_name}")
+            logger.info(f"✅ Voice backup created in chat {chat_id}")
             
         elif message.video_note:
             await context.bot.send_video_note(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 video_note=message.video_note.file_id
             )
             await context.bot.send_message(
-                chat_id=target_user_id,
-                text=caption_text
+                chat_id=chat_id,
+                text=backup_label
             )
-            logger.info(f"✅ Video note saved from {chat_name}")
+            logger.info(f"✅ Video note backup created in chat {chat_id}")
             
         elif message.sticker:
             await context.bot.send_sticker(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 sticker=message.sticker.file_id
             )
             await context.bot.send_message(
-                chat_id=target_user_id,
-                text=caption_text
+                chat_id=chat_id,
+                text=backup_label
             )
-            logger.info(f"✅ Sticker saved from {chat_name}")
+            logger.info(f"✅ Sticker backup created in chat {chat_id}")
             
         elif message.text:
-            text_content = f"{caption_text}\n\n💬 Message:\n{message.text}"
+            text_content = f"{backup_label}\n💬 Message:\n{message.text}"
             await context.bot.send_message(
-                chat_id=target_user_id,
+                chat_id=chat_id,
                 text=text_content[:4096]
             )
-            logger.info(f"✅ Text saved from {chat_name}")
+            logger.info(f"✅ Text backup created in chat {chat_id}")
             
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
-
-async def set_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Owner ID set karne ke liye - bot ko private chat mein /setowner bhejo"""
-    if update.effective_user:
-        context.bot_data['owner_id'] = update.effective_user.id
-        await update.message.reply_text(
-            f"✅ Owner set: {update.effective_user.first_name}\n"
-            f"ID: {update.effective_user.id}\n\n"
-            f"Ab main tumhe sab forwarded messages bhejunga! 🚀"
-        )
-        logger.info(f"✅ Owner set: {update.effective_user.id}")
+        logger.error(f"❌ Error creating backup: {e}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log errors"""
@@ -209,7 +180,6 @@ async def main():
     
     # Commands
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("setowner", set_owner))
     
     # Forwarded messages handler - dono message aur channel_post ke liye
     application.add_handler(
@@ -227,7 +197,7 @@ async def main():
     
     logger.info("🚀 Bot started!")
     logger.info("📡 Polling mode active...")
-    logger.info("⚠️ First send /setowner to bot in private chat!")
+    logger.info("💾 Bot will save backups in same chat!")
     
     # Start bot
     async with application:
